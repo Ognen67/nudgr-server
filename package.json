@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@clerk/backend": "^1.0.0",
-    "@prisma/client": "^6.9.0",
+    "@prisma/client": "^6.10.1",
     "@supabase/supabase-js": "^2.50.0",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
@@ -32,7 +32,7 @@
     "@types/node": "^24.0.3",
     "@types/pg": "^8.10.9",
     "nodemon": "^3.0.2",
-    "prisma": "^6.9.0",
+    "prisma": "^6.10.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
   },

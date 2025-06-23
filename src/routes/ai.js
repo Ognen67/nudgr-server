@@ -85,8 +85,7 @@ Return only a JSON array of task objects with the following structure:
     "title": "Task title",
     "description": "Detailed description of what needs to be done",
     "priority": "HIGH|MEDIUM|LOW",
-    "estimatedTime": 60,
-    "dueDate": "2024-01-15" (optional, based on goal deadline and task sequence)
+    "estimatedTime": 60
   }
 ]
 
@@ -149,7 +148,6 @@ Make sure the JSON is valid and properly formatted.`;
               description: taskData.description,
               priority: taskData.priority || 'MEDIUM',
               estimatedTime: taskData.estimatedTime,
-              dueDate: taskData.dueDate ? new Date(taskData.dueDate) : null,
               aiGenerated: true,
               userId: req.user.id,
               goalId: goalId
@@ -207,8 +205,7 @@ router.post('/optimize-schedule', async (req, res) => {
         }
       },
       orderBy: [
-        { priority: 'desc' },
-        { dueDate: 'asc' }
+        { priority: 'desc' }
       ]
     });
 
@@ -227,7 +224,6 @@ router.post('/optimize-schedule', async (req, res) => {
       title: task.title,
       priority: task.priority,
       estimatedTime: task.estimatedTime || 30,
-      dueDate: task.dueDate,
       goalTitle: task.goal?.title,
       goalPriority: task.goal?.priority
     }));

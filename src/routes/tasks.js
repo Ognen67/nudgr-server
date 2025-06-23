@@ -34,7 +34,6 @@ router.get('/', async (req, res) => {
       orderBy: [
         { completed: 'asc' },
         { priority: 'desc' },
-        { dueDate: 'asc' },
         { createdAt: 'desc' }
       ],
       take: parseInt(limit),
@@ -86,7 +85,6 @@ router.post('/', async (req, res) => {
       description, 
       goalId, 
       priority, 
-      dueDate, 
       estimatedTime,
       aiGenerated = false 
     } = req.body;
@@ -115,7 +113,6 @@ router.post('/', async (req, res) => {
         description,
         goalId,
         priority: priority || 'MEDIUM',
-        dueDate: dueDate ? new Date(dueDate) : null,
         estimatedTime,
         aiGenerated,
         userId: '1' // Using actual user ID from database
@@ -146,7 +143,6 @@ router.put('/:id', async (req, res) => {
       description, 
       goalId, 
       priority, 
-      dueDate, 
       estimatedTime,
       actualTime,
       completed 
@@ -182,7 +178,6 @@ router.put('/:id', async (req, res) => {
       ...(description !== undefined && { description }),
       ...(goalId !== undefined && { goalId }),
       ...(priority && { priority }),
-      ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
       ...(estimatedTime !== undefined && { estimatedTime }),
       ...(actualTime !== undefined && { actualTime })
     };
@@ -286,25 +281,15 @@ router.get('/stats', async (req, res) => {
   try {
     const userId = '1'; // Using actual user ID from database
     
-    const [totalTasks, completedTasks, overdueTasks] = await Promise.all([
+    const [totalTasks, completedTasks] = await Promise.all([
       prisma.task.count({ where: { userId } }),
-      prisma.task.count({ where: { userId, completed: true } }),
-      prisma.task.count({ 
-        where: { 
-          userId, 
-          completed: false,
-          dueDate: {
-            lt: new Date()
-          }
-        } 
-      })
+      prisma.task.count({ where: { userId, completed: true } })
     ]);
 
     const stats = {
       total: totalTasks,
       completed: completedTasks,
       pending: totalTasks - completedTasks,
-      overdue: overdueTasks,
       completionRate: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
     };
 

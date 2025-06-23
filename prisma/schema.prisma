@@ -9,7 +9,7 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
-
+  
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -46,13 +46,13 @@ model Task {
   priority    Priority @default(MEDIUM)
   estimatedTime Int?   // in minutes
   aiGenerated Boolean  @default(false)
-  
+
   // Relations
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   goalId      String?
   goal        Goal?    @relation(fields: [goalId], references: [id], onDelete: SetNull)
-  
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -105,6 +105,6 @@ enum GoalStatus {
 enum SubscriptionStatus {
   ACTIVE
   CANCELLED
-  PAST_DUE
+  PAST_
   UNPAID
-} 
+}
