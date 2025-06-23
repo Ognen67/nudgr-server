@@ -6,65 +6,72 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
 }
 
 model User {
   id        String   @id @default(cuid())
-  clerkId   String   @unique
   email     String   @unique
   name      String?
-  imageUrl  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  goals        Goal[]
+  
+  // Relations
   tasks        Task[]
+  goals        Goal[]
+  profile      UserProfile?
   subscription Subscription?
+}
 
-  @@map("users")
+model UserProfile {
+  id          String @id @default(cuid())
+  userId      String @unique
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Personal memory and preferences
+  preferences Json?  // Communication style, working hours, etc.
+  patterns    Json?  // Behavioral patterns, productivity times
+  personality Json?  // Personality traits learned from interactions
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Task {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  completed   Boolean  @default(false)
+  priority    Priority @default(MEDIUM)
+  estimatedTime Int?   // in minutes
+  aiGenerated Boolean  @default(false)
+  
+  // Relations
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goalId      String?
+  goal        Goal?    @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Goal {
   id          String   @id @default(cuid())
   title       String
   description String?
-  deadline    DateTime?
   priority    Priority @default(MEDIUM)
-  status      GoalStatus @default(ACTIVE)
   category    String?
+  icon        String?
+  
+  // Relations
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks       Task[]
+  
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tasks  Task[]
-
-  @@map("goals")
-}
-
-model Task {
-  id          String     @id @default(cuid())
-  title       String
-  description String?
-  completed   Boolean    @default(false)
-  priority    Priority   @default(MEDIUM)
-  dueDate     DateTime?
-  estimatedTime Int?     // in minutes
-  actualTime  Int?       // in minutes
-  aiGenerated Boolean    @default(false)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  completedAt DateTime?
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  goalId String?
-  goal   Goal?  @relation(fields: [goalId], references: [id], onDelete: SetNull)
-
-  @@map("tasks")
 }
 
 model Subscription {
@@ -86,7 +93,6 @@ enum Priority {
   LOW
   MEDIUM
   HIGH
-  URGENT
 }
 
 enum GoalStatus {
