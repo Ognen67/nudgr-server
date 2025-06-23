@@ -8,7 +8,11 @@
     "start": "node src/server.js",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
-    "prisma:studio": "prisma studio"
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:migrate:reset": "prisma migrate reset",
+    "prisma:studio": "prisma studio",
+    "db:seed": "node prisma/seed.js"
   },
   "dependencies": {
     "@clerk/backend": "^1.0.0",
@@ -21,10 +25,12 @@
     "helmet": "^7.1.0",
     "morgan": "^1.10.0",
     "openai": "^4.20.1",
+    "pg": "^8.11.3",
     "stripe": "^14.9.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.3",
+    "@types/pg": "^8.10.9",
     "nodemon": "^3.0.2",
     "prisma": "^6.9.0",
     "ts-node": "^10.9.2",
