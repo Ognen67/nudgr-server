@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,53 +7,45 @@ datasource db {
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
-  
+
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String? 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
-  // Relations
-  tasks        Task[]
+  id           String        @id @default(cuid())
+  email        String        @unique
+  name         String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
   goals        Goal[]
+  tasks        Task[]
   profile      UserProfile?
   subscription Subscription?
 }
 
 model UserProfile {
-  id          String @id @default(cuid())
-  userId      String @unique
-  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  // Personal memory and preferences
-  preferences Json?  // Communication style, working hours, etc.
-  patterns    Json?  // Behavioral patterns, productivity times
-  personality Json?  // Personality traits learned from interactions
-  
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  preferences Json?
+  patterns    Json?
+  personality Json?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Task {
-  id          String   @id @default(cuid())
-  title       String
-  description String?
-  completed   Boolean  @default(false)
-  priority    Priority @default(MEDIUM)
-  estimatedTime Int?   // in minutes
-  aiGenerated Boolean  @default(false)
-  dueDate DateTime?
-  
-  // Relations
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  goalId      String?
-  goal        Goal?    @relation(fields: [goalId], references: [id], onDelete: SetNull)
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String    @id @default(cuid())
+  title         String
+  description   String?
+  completed     Boolean   @default(false)
+  priority      Priority  @default(MEDIUM)
+  estimatedTime Int?
+  aiGenerated   Boolean   @default(false)
+  dueDate       DateTime?
+  userId        String
+  goalId        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  goal          Goal?     @relation(fields: [goalId], references: [id])
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Goal {
@@ -66,27 +55,24 @@ model Goal {
   priority    Priority @default(MEDIUM)
   category    String?
   icon        String?
-  
-  // Relations
   userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tasks       Task[]
-  
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks       Task[]
 }
 
 model Subscription {
-  id                String            @id @default(cuid())
-  userId            String            @unique
-  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  stripeCustomerId  String            @unique
-  stripeSubscriptionId String?        @unique
-  stripePriceId     String?
-  status            SubscriptionStatus
-  currentPeriodEnd  DateTime?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  id                   String             @id @default(cuid())
+  userId               String             @unique
+  stripeCustomerId     String             @unique
+  stripeSubscriptionId String?            @unique
+  stripePriceId        String?
+  status               SubscriptionStatus
+  currentPeriodEnd     DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("subscriptions")
 }
