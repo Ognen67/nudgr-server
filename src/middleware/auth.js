@@ -12,6 +12,9 @@ export const authMiddleware = (req, res, next) => {
 };
 
 export const getUserFromAuth = async (req, res, next) => {
+  if (!req.auth || !req.auth.userId) {
+    return res.status(401).json({ error: 'Unauthorized: No userId in auth' });
+  }
   try {
     const { userId: clerkId } = req.auth;
     
