@@ -11,6 +11,12 @@ export const authMiddleware = (req, res, next) => {
   next();
 };
 
+export function getUserFromAuth(req, res, next) {
+  // DEV BYPASS: Always use user id '1'
+  req.user = { id: '1' };
+  next();
+}
+
 export const getUserFromAuth = async (req, res, next) => {
   if (!req.auth || !req.auth.userId) {
     return res.status(401).json({ error: 'Unauthorized: No userId in auth' });
