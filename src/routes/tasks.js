@@ -86,7 +86,8 @@ router.post('/', async (req, res) => {
       goalId, 
       priority, 
       estimatedTime,
-      aiGenerated = false 
+      aiGenerated = false,
+      dueDate
     } = req.body;
 
     if (!title) {
@@ -115,7 +116,8 @@ router.post('/', async (req, res) => {
         priority: priority || 'MEDIUM',
         estimatedTime,
         aiGenerated,
-        userId: '1' // Using actual user ID from database
+        userId: '1', // Using actual user ID from database
+        dueDate
       },
       include: {
         goal: {
@@ -145,7 +147,8 @@ router.put('/:id', async (req, res) => {
       priority, 
       estimatedTime,
       actualTime,
-      completed 
+      completed,
+      dueDate
     } = req.body;
 
     const existingTask = await prisma.task.findFirst({
@@ -179,7 +182,8 @@ router.put('/:id', async (req, res) => {
       ...(goalId !== undefined && { goalId }),
       ...(priority && { priority }),
       ...(estimatedTime !== undefined && { estimatedTime }),
-      ...(actualTime !== undefined && { actualTime })
+      ...(actualTime !== undefined && { actualTime }),
+      ...(dueDate && { dueDate })
     };
 
     // Handle completion status
