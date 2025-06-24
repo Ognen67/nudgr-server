@@ -10,41 +10,13 @@ export const authMiddleware = (req, res, next) => {
   };
   next();
 };
-
-export function getUserFromAuth(req, res, next) {
-  // DEV BYPASS: Always use user id '1'
-  req.user = { id: '1' };
-  next();
-}
-
 export const getUserFromAuth = async (req, res, next) => {
-  if (!req.auth || !req.auth.userId) {
-    return res.status(401).json({ error: 'Unauthorized: No userId in auth' });
-  }
   try {
-    const { userId: clerkId } = req.auth;
+    // For testing: Get first user from database
+    const user = await prisma.user.findFirst();
     
-    if (!clerkId) {
-      return res.status(401).json({ error: 'No user ID found in token' });
-    }
-
-    // Find or create user in database
-    let user = await prisma.user.findUnique({
-      where: { clerkId }
-    });
-
     if (!user) {
-      // Get user details from Clerk
-      // const clerkUser = await clerkClient.users.getUser(clerkId);
-      
-      user = await prisma.user.create({
-        data: {
-          clerkId,
-          email: clerkUser.emailAddresses[0]?.emailAddress || '',
-          name: `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim(),
-          imageUrl: clerkUser.imageUrl
-        }
-      });
+      return res.status(500).json({ error: 'No users found in database' });
     }
 
     req.user = user;
@@ -53,4 +25,4 @@ export const getUserFromAuth = async (req, res, next) => {
     console.error('Error getting user from auth:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
-}; 
+};
