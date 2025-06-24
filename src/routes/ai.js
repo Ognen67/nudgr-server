@@ -19,7 +19,7 @@ const openai = new OpenAI({
 // ...re-enable Clerk middleware above when ready...
 
 // Apply user middleware to all routes
-// router.use(getUserFromAuth);
+router.use(getUserFromAuth);
 
 // POST /api/ai/suggest-tasks - Generate AI task suggestions for a goal
 router.post('/suggest-tasks', async (req, res) => {
@@ -542,7 +542,7 @@ Make sure:
 
     // Save tasks to database
     const createdTasks = [];
-    const userId = '1'; // Using actual user ID from database
+    const userId = req.user.id; // Using actual user ID from database
 
     for (const taskData of suggestedTasks) {
       try {
@@ -660,7 +660,7 @@ Make sure:
       });
     }
 
-    const userId = '1'; // Using actual user ID from database
+    const userId = req.user.id; // Using actual user ID from database
 
     // Create the goal first
     let createdGoal;

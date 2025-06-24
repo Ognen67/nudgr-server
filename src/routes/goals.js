@@ -6,13 +6,13 @@ const router = express.Router();
 const prisma = new PrismaClient();
 
 // Apply user middleware to all routes (TEMPORARILY DISABLED FOR TESTING)
-// router.use(getUserFromAuth);
+router.use(getUserFromAuth);
 
 // GET /api/goals - Get all goals for the authenticated user
 router.get('/', async (req, res) => {
   try {
     const goals = await prisma.goal.findMany({
-      where: { userId: '1' }, // Using actual user ID from database
+      where: { userId: req.user.id }, // Using actual user ID from database
       include: {
         tasks: {
           orderBy: { createdAt: 'desc' }

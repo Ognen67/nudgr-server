@@ -6,8 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -46,6 +47,7 @@ model Task {
   priority    Priority @default(MEDIUM)
   estimatedTime Int?   // in minutes
   aiGenerated Boolean  @default(false)
+  dueDate DateTime?
   
   // Relations
   userId      String
