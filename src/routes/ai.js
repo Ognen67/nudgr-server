@@ -733,27 +733,74 @@ router.post('/transform-thought-streaming', async (req, res) => {
       return;
     }
 
-    res.write(`data: ${JSON.stringify({ type: 'status', message: 'Generating tasks...' })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: 'status', message: 'Creating your goal and tasks...' })}\n\n`);
 
     const prompt = `
-Transform this thought into 3-5 actionable tasks: "${thought}"
+You are a world-class productivity coach and goal-setting expert. Transform this thought into a clear, actionable GOAL and then break it down into 3-4 specific tasks that will achieve that goal.
 
-Return ONLY a JSON array of task objects with this structure:
+User's Thought: "${thought}"
 
-[
-  {
-    "title": "Task title (max 100 characters)",
-    "description": "Detailed description of what needs to be done",
+GOAL CREATION PRINCIPLES:
+- Transform the thought into a clear, specific, measurable goal
+- Make it inspiring but achievable
+- Include a clear success criteria or outcome
+- Set appropriate priority and timeline expectations
+
+TASK BREAKDOWN PRINCIPLES:
+- Create 3-4 tasks that directly contribute to achieving the goal
+- Start with the most logical first step someone can take TODAY
+- Include specific deliverables or outcomes for each task
+- Consider prerequisites and logical sequencing
+- Make tasks challenging but achievable within the estimated timeframe
+- Be specific about WHO, WHAT, WHERE, WHEN details when relevant
+
+PRIORITY GUIDELINES:
+- HIGH: Critical path items that unlock other tasks or have deadlines
+- MEDIUM: Important but not time-sensitive
+- LOW: Nice-to-have or preparatory tasks
+
+CATEGORY GUIDELINES:
+- work: Professional, career, business-related
+- personal: Life admin, relationships, home organization
+- health: Physical fitness, mental wellness, medical
+- learning: Education, skill development, courses, reading
+- creative: Art, writing, design, music, creative projects
+- financial: Money management, investments, budgeting
+
+TIME ESTIMATION GUIDELINES:
+- Be realistic: account for setup time, breaks, potential obstacles
+- 15-30 min: Quick tasks, calls, emails, simple research
+- 30-60 min: Focused work sessions, basic learning modules
+- 60-120 min: Deep work, complex tasks, workshops
+- 120+ min: Major projects, comprehensive research, skill practice
+
+Return ONLY a JSON object with this exact structure:
+
+{
+  "goal": {
+    "title": "Clear, inspiring goal title (max 100 characters)",
+    "description": "Detailed description of what success looks like and why it matters",
     "priority": "HIGH|MEDIUM|LOW",
-    "estimatedTime": 60,
-    "category": "work|personal|health|learning|other"
-  }
-]
+    "category": "work|personal|health|learning|creative|financial"
+  },
+  "tasks": [
+    {
+      "title": "Specific, action-oriented task title (max 80 characters)",
+      "description": "Clear description with specific outcome or deliverable expected",
+      "priority": "HIGH|MEDIUM|LOW",
+      "estimatedTime": 45,
+      "category": "work|personal|health|learning|creative|financial"
+    }
+  ]
+}
 
-Ensure:
-1. Tasks are specific and achievable
-2. JSON is valid
-3. No extra text outside the JSON array
+Requirements:
+- Return valid JSON only, no markdown, no explanations
+- Create exactly 1 goal and 3-4 tasks
+- Tasks should directly contribute to achieving the goal
+- Include realistic time estimates in minutes for tasks
+- Make titles action-oriented (start with verbs when possible for tasks)
+- Ensure the goal is inspiring and the tasks are immediately actionable
 `;
 
     const stream = await openai.chat.completions.create({
@@ -768,6 +815,7 @@ Ensure:
     });
 
     let accumulatedResponse = '';
+    let goalSent = false;
     let sentTasks = [];
 
     // Stream chunks and parse progressively
@@ -784,7 +832,7 @@ Ensure:
         })}\n\n`);
       }
 
-      // Try to extract complete tasks from accumulated response
+      // Try to extract complete goal and tasks from accumulated response
       try {
         let cleanResponse = accumulatedResponse.trim();
         if (cleanResponse.startsWith('```json')) {
@@ -793,15 +841,31 @@ Ensure:
           cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
         }
 
-        // Try to parse JSON - this will work once we have complete tasks
-        if (cleanResponse.startsWith('[') && cleanResponse.includes('}')) {
-          const tasks = JSON.parse(cleanResponse);
+        // Try to parse JSON - this will work once we have complete response
+        if (cleanResponse.startsWith('{') && cleanResponse.includes('"goal"') && cleanResponse.includes('"tasks"')) {
+          const result = JSON.parse(cleanResponse);
           
-          if (Array.isArray(tasks)) {
+          if (result.goal && Array.isArray(result.tasks)) {
+            // Send goal first if not already sent
+            if (!goalSent && result.goal) {
+              const goalWithId = {
+                ...result.goal,
+                id: `goal_${Date.now()}`,
+                generated: true
+              };
+              
+              res.write(`data: ${JSON.stringify({
+                type: 'goal',
+                goal: goalWithId
+              })}\n\n`);
+              
+              goalSent = true;
+            }
+
             // Send any new complete tasks
-            for (let i = sentTasks.length; i < tasks.length; i++) {
+            for (let i = sentTasks.length; i < result.tasks.length; i++) {
               const task = {
-                ...tasks[i],
+                ...result.tasks[i],
                 id: `task_${Date.now()}_${i}`,
                 generated: true
               };
@@ -810,7 +874,7 @@ Ensure:
                 type: 'task',
                 task: task,
                 index: i,
-                total: tasks.length
+                total: result.tasks.length
               })}\n\n`);
               
               sentTasks.push(task);
@@ -822,7 +886,7 @@ Ensure:
       }
     }
 
-    // Final parse for any remaining tasks
+    // Final parse for any remaining goal and tasks
     try {
       let cleanResponse = accumulatedResponse.trim();
       if (cleanResponse.startsWith('```json')) {
@@ -831,13 +895,29 @@ Ensure:
         cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
       }
 
-      const tasks = JSON.parse(cleanResponse);
+      const result = JSON.parse(cleanResponse);
       
-      if (Array.isArray(tasks)) {
+      if (result.goal && Array.isArray(result.tasks)) {
+        // Send goal if not already sent
+        if (!goalSent && result.goal) {
+          const goalWithId = {
+            ...result.goal,
+            id: `goal_${Date.now()}`,
+            generated: true
+          };
+          
+          res.write(`data: ${JSON.stringify({
+            type: 'goal',
+            goal: goalWithId
+          })}\n\n`);
+          
+          goalSent = true;
+        }
+
         // Send any final tasks that weren't sent during streaming
-        for (let i = sentTasks.length; i < tasks.length; i++) {
+        for (let i = sentTasks.length; i < result.tasks.length; i++) {
           const task = {
-            ...tasks[i],
+            ...result.tasks[i],
             id: `task_${Date.now()}_${i}`,
             generated: true
           };
@@ -846,7 +926,7 @@ Ensure:
             type: 'task',
             task: task,
             index: i,
-            total: tasks.length
+            total: result.tasks.length
           })}\n\n`);
           
           sentTasks.push(task);
@@ -862,9 +942,10 @@ Ensure:
       return;
     }
 
-    // All tasks sent, notify completion
+    // All goal and tasks sent, notify completion
     res.write(`data: ${JSON.stringify({ 
       type: 'complete', 
+      goalCreated: goalSent,
       totalTasks: sentTasks.length 
     })}\n\n`);
     res.end();
