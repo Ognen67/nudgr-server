@@ -717,34 +717,31 @@ Make sure:
 // POST /api/ai/transform-thought-streaming - Stream task generation in real-time
 router.post('/transform-thought-streaming', async (req, res) => {
   console.log('POST /api/ai/transform-thought-streaming - Request received:', req.body);
-  
-  // Set up Server-Sent Events
+
+  // Set up Server-Sent Events headers
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     'Connection': 'keep-alive',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Cache-Control'
+    'Access-Control-Allow-Origin': '*'
   });
 
   try {
     const { thought } = req.body;
+
     if (!thought || typeof thought !== 'string') {
-      res.write(`data: ${JSON.stringify({ error: 'Thought is required' })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: 'error', message: 'Thought is required' })}\n\n`);
       res.end();
       return;
     }
 
-    // Send initial status
-    res.write(`data: ${JSON.stringify({ 
-      type: 'status', 
-      message: 'Analyzing your thought...' 
-    })}\n\n`);
+    // Initial status update
+    res.write(`data: ${JSON.stringify({ type: 'status', message: 'Analyzing your thought...' })}\n\n`);
 
     const prompt = `
 Transform this thought into 3-5 actionable tasks: "${thought}"
 
-Please analyze this thought and break it down into specific, actionable tasks. Return ONLY a JSON array of task objects with this exact structure:
+Return ONLY a JSON array of task objects with this structure:
 
 [
   {
@@ -756,19 +753,16 @@ Please analyze this thought and break it down into specific, actionable tasks. R
   }
 ]
 
-Make sure:
-1. Each task is specific and actionable
-2. Tasks are realistic and achievable  
-3. The JSON is valid and properly formatted
-4. No extra text outside the JSON array`;
+Ensure:
+1. Tasks are specific and achievable
+2. JSON is valid
+3. No extra text outside the JSON array
+`;
 
-    console.log('Sending request to OpenAI for streaming');
-    
-    // Use OpenAI streaming
     const stream = await openai.chat.completions.create({
-      model: 'gpt-4-turbo-preview',
+      model: 'gpt-4o',
       messages: [
-        { role: 'system', content: 'You are a productivity assistant. Always respond with valid JSON only.' },
+        { role: 'system', content: 'You are a productivity assistant. Only return valid JSON arrays of tasks.' },
         { role: 'user', content: prompt }
       ],
       max_tokens: 1000,
@@ -777,53 +771,41 @@ Make sure:
     });
 
     let accumulatedResponse = '';
-    
-    // Stream status updates
-    res.write(`data: ${JSON.stringify({ 
-      type: 'status', 
-      message: 'Generating tasks...' 
-    })}\n\n`);
 
-    // Process the stream
+    res.write(`data: ${JSON.stringify({ type: 'status', message: 'Generating tasks...' })}\n\n`);
+
     for await (const chunk of stream) {
-      const content = chunk.choices[0]?.delta?.content || '';
+      const content = chunk.choices?.[0]?.delta?.content || '';
       accumulatedResponse += content;
-      
-      // Send progress update
-      if (content) {
-        res.write(`data: ${JSON.stringify({ 
-          type: 'progress', 
-          content: content,
-          accumulated: accumulatedResponse.length
-        })}\n\n`);
+
+      if (content.trim()) {
+        res.write(`data: ${JSON.stringify({ type: 'progress', content, accumulated: accumulatedResponse.length })}\n\n`);
       }
     }
 
-    // Parse the complete response
+    // Clean and parse JSON
+    let cleanResponse = accumulatedResponse.trim();
+    if (cleanResponse.startsWith('```json')) {
+      cleanResponse = cleanResponse.replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
+    } else if (cleanResponse.startsWith('```')) {
+      cleanResponse = cleanResponse.replace(/^```\s*/i, '').replace(/\s*```$/i, '');
+    }
+
     let suggestedTasks;
     try {
-      let cleanResponse = accumulatedResponse.trim();
-      if (cleanResponse.startsWith('```json')) {
-        cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-      } else if (cleanResponse.startsWith('```')) {
-        cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
-      }
-      
       suggestedTasks = JSON.parse(cleanResponse);
+
       if (!Array.isArray(suggestedTasks)) {
-        throw new Error('Response is not an array');
+        throw new Error('Response is not a JSON array');
       }
-    } catch (parseError) {
-      console.error('Error parsing AI response:', parseError);
-      res.write(`data: ${JSON.stringify({ 
-        type: 'error', 
-        message: 'Failed to parse AI suggestions' 
-      })}\n\n`);
+    } catch (err) {
+      console.error('Error parsing AI response:', err.message);
+      res.write(`data: ${JSON.stringify({ type: 'error', message: 'Failed to parse AI suggestions' })}\n\n`);
       res.end();
       return;
     }
 
-    // Send tasks one by one with delay to simulate streaming
+    // Stream tasks one by one
     for (let i = 0; i < suggestedTasks.length; i++) {
       const task = {
         ...suggestedTasks[i],
@@ -831,31 +813,23 @@ Make sure:
         generated: true
       };
 
-      // Add small delay for better UX
       await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 600));
-      
-      res.write(`data: ${JSON.stringify({ 
-        type: 'task', 
-        task: task,
+
+      res.write(`data: ${JSON.stringify({
+        type: 'task',
+        task,
         index: i,
         total: suggestedTasks.length
       })}\n\n`);
     }
 
-    // Send completion
-    res.write(`data: ${JSON.stringify({ 
-      type: 'complete', 
-      totalTasks: suggestedTasks.length 
-    })}\n\n`);
-
+    // Completion message
+    res.write(`data: ${JSON.stringify({ type: 'complete', totalTasks: suggestedTasks.length })}\n\n`);
     res.end();
 
   } catch (error) {
     console.error('Streaming error:', error);
-    res.write(`data: ${JSON.stringify({ 
-      type: 'error', 
-      message: 'Failed to generate tasks' 
-    })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: 'error', message: 'Failed to generate tasks' })}\n\n`);
     res.end();
   }
 });
