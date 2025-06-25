@@ -1,9 +1,8 @@
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import { getUserFromAuth } from '../middleware/auth.js';
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // Apply user middleware to all routes (TEMPORARILY DISABLED FOR TESTING)
 router.use(getUserFromAuth);

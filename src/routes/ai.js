@@ -1,5 +1,5 @@
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import OpenAI from 'openai';
 import { getUserFromAuth } from '../middleware/auth.js';
 
@@ -7,7 +7,6 @@ import { getUserFromAuth } from '../middleware/auth.js';
 import 'dotenv/config'
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY

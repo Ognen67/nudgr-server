@@ -1,11 +1,10 @@
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 // (CLERK AUTH DISABLED FOR TESTING)
 // import { requireAuth } from '@clerk/express';
 // import { clerkClient } from '@clerk/backend';
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // GET /api/auth/me - Get current user profile
 // router.get('/me', requireAuth(), async (req, res) => { ... });
