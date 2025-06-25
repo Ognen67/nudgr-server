@@ -718,7 +718,6 @@ Make sure:
 router.post('/transform-thought-streaming', async (req, res) => {
   console.log('POST /api/ai/transform-thought-streaming - Request received:', req.body);
 
-  // Set up Server-Sent Events headers
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -735,8 +734,7 @@ router.post('/transform-thought-streaming', async (req, res) => {
       return;
     }
 
-    // Initial status update
-    res.write(`data: ${JSON.stringify({ type: 'status', message: 'Analyzing your thought...' })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: 'status', message: 'Generating tasks...' })}\n\n`);
 
     const prompt = `
 Transform this thought into 3-5 actionable tasks: "${thought}"
@@ -771,60 +769,105 @@ Ensure:
     });
 
     let accumulatedResponse = '';
+    let sentTasks = [];
 
-    res.write(`data: ${JSON.stringify({ type: 'status', message: 'Generating tasks...' })}\n\n`);
-
+    // Stream chunks and parse progressively
     for await (const chunk of stream) {
       const content = chunk.choices?.[0]?.delta?.content || '';
       accumulatedResponse += content;
 
+      // Send progress update
       if (content.trim()) {
-        res.write(`data: ${JSON.stringify({ type: 'progress', content, accumulated: accumulatedResponse.length })}\n\n`);
+        res.write(`data: ${JSON.stringify({
+          type: 'progress',
+          content: content,
+          totalLength: accumulatedResponse.length
+        })}\n\n`);
+      }
+
+      // Try to extract complete tasks from accumulated response
+      try {
+        let cleanResponse = accumulatedResponse.trim();
+        if (cleanResponse.startsWith('```json')) {
+          cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        } else if (cleanResponse.startsWith('```')) {
+          cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
+        }
+
+        // Try to parse JSON - this will work once we have complete tasks
+        if (cleanResponse.startsWith('[') && cleanResponse.includes('}')) {
+          const tasks = JSON.parse(cleanResponse);
+          
+          if (Array.isArray(tasks)) {
+            // Send any new complete tasks
+            for (let i = sentTasks.length; i < tasks.length; i++) {
+              const task = {
+                ...tasks[i],
+                id: `task_${Date.now()}_${i}`,
+                generated: true
+              };
+              
+              res.write(`data: ${JSON.stringify({
+                type: 'task',
+                task: task,
+                index: i,
+                total: tasks.length
+              })}\n\n`);
+              
+              sentTasks.push(task);
+            }
+          }
+        }
+      } catch (parseError) {
+        // Still accumulating, ignore parse errors
       }
     }
 
-    // Clean and parse JSON
-    let cleanResponse = accumulatedResponse.trim();
-    if (cleanResponse.startsWith('```json')) {
-      cleanResponse = cleanResponse.replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
-    } else if (cleanResponse.startsWith('```')) {
-      cleanResponse = cleanResponse.replace(/^```\s*/i, '').replace(/\s*```$/i, '');
-    }
-
-    let suggestedTasks;
+    // Final parse for any remaining tasks
     try {
-      suggestedTasks = JSON.parse(cleanResponse);
-
-      if (!Array.isArray(suggestedTasks)) {
-        throw new Error('Response is not a JSON array');
+      let cleanResponse = accumulatedResponse.trim();
+      if (cleanResponse.startsWith('```json')) {
+        cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (cleanResponse.startsWith('```')) {
+        cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
       }
-    } catch (err) {
-      console.error('Error parsing AI response:', err.message);
-      res.write(`data: ${JSON.stringify({ type: 'error', message: 'Failed to parse AI suggestions' })}\n\n`);
+
+      const tasks = JSON.parse(cleanResponse);
+      
+      if (Array.isArray(tasks)) {
+        // Send any final tasks that weren't sent during streaming
+        for (let i = sentTasks.length; i < tasks.length; i++) {
+          const task = {
+            ...tasks[i],
+            id: `task_${Date.now()}_${i}`,
+            generated: true
+          };
+          
+          res.write(`data: ${JSON.stringify({
+            type: 'task',
+            task: task,
+            index: i,
+            total: tasks.length
+          })}\n\n`);
+          
+          sentTasks.push(task);
+        }
+      }
+    } catch (finalParseError) {
+      console.error('Final parse error:', finalParseError);
+      res.write(`data: ${JSON.stringify({ 
+        type: 'error', 
+        message: 'Failed to parse AI response' 
+      })}\n\n`);
       res.end();
       return;
     }
 
-    // Stream tasks one by one
-    for (let i = 0; i < suggestedTasks.length; i++) {
-      const task = {
-        ...suggestedTasks[i],
-        id: `task_${Date.now()}_${i}`,
-        generated: true
-      };
-
-      await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 600));
-
-      res.write(`data: ${JSON.stringify({
-        type: 'task',
-        task,
-        index: i,
-        total: suggestedTasks.length
-      })}\n\n`);
-    }
-
-    // Completion message
-    res.write(`data: ${JSON.stringify({ type: 'complete', totalTasks: suggestedTasks.length })}\n\n`);
+    // All tasks sent, notify completion
+    res.write(`data: ${JSON.stringify({ 
+      type: 'complete', 
+      totalTasks: sentTasks.length 
+    })}\n\n`);
     res.end();
 
   } catch (error) {
