@@ -10,6 +10,7 @@ import authRoutes from './routes/auth.js';
 import goalRoutes from './routes/goals.js';
 import taskRoutes from './routes/tasks.js';
 import aiRoutes from './routes/ai.js';
+import ideaRoutes from './routes/ideas.js';
 // import stripeRoutes from './routes/stripe.js';
 
 // Middleware imports
@@ -53,8 +54,9 @@ app.get('/health', (req, res) => {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/goals', goalRoutes);
-app.use('/api/tasks', taskRoutes); 
+app.use('/api/tasks', taskRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/ideas', ideaRoutes);
 // app.use('/api/stripe', stripeRoutes);
 
 // Error handling middleware
