@@ -34,7 +34,7 @@ const limiter = rateLimit({
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: ['https://nudgr-server-production.up.railway.app', 'https://nudgr-server-production.up.railway.app', process.env.VERCEL_URL],
+  origin: true,
   credentials: true
 }));
 app.use(morgan('combined'));
