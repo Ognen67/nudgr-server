@@ -1,11 +1,10 @@
 import express from 'express';
 import prisma from '../lib/prisma.js';
-import { getUserFromAuth } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Apply user middleware to all routes
-router.use(getUserFromAuth);
+// Note: Authentication middleware is applied at the server level
+// req.user is available from the authMiddleware
 
 // GET /api/ideas - Get all ideas for the authenticated user
 router.get('/', async (req, res) => {
