@@ -22,6 +22,7 @@ router.get('/', async (req, res) => {
     const tasks = await prisma.task.findMany({
       where,
       include: {
+        completed,
         goal: {
           select: {
             id: true,
