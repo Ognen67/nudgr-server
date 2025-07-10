@@ -13,16 +13,21 @@ router.get('/', async (req, res) => {
     const { goalId, completed, priority, limit = 50, offset = 0 } = req.query;
     
     const where = {
-      userId: req.user.id, // Using actual user ID from database
+      userId: 1, // Using actual user ID from database
       ...(goalId && { goalId }),
-      ...(completed && { completed }),
+      ...(completed !== undefined && { completed: completed === 'true' }),
       ...(priority && { priority })
     };
+
+    // Debug: Count total tasks and completed tasks
+    const totalTasks = await prisma.task.count({ where: { userId: 1 } });
+    const completedTasks = await prisma.task.count({ where: { userId: 1, completed: true } });
+    
+    console.log(`Debug: User ${req.user.id} has ${totalTasks} total tasks, ${completedTasks} completed`);
 
     const tasks = await prisma.task.findMany({
       where,
       include: {
-        completed,
         goal: {
           select: {
             id: true,
@@ -40,6 +45,8 @@ router.get('/', async (req, res) => {
       skip: parseInt(offset)
     });
 
+    console.log(`Debug: Returning ${tasks.length} tasks, completed count: ${tasks.filter(t => t.completed).length}`);
+
     res.json(tasks);
   } catch (error) {
     console.error('Error fetching tasks:', error);
@@ -53,7 +60,7 @@ router.get('/:id', async (req, res) => {
     const task = await prisma.task.findFirst({
       where: {
         id: req.params.id,
-        userId: '1' // Using actual user ID from database
+        userId: 1 // Using actual user ID from database
       },
       include: {
         goal: {
@@ -99,7 +106,7 @@ router.post('/', async (req, res) => {
       const goal = await prisma.goal.findFirst({
         where: {
           id: goalId,
-          userId: '1' // Using actual user ID from database
+          userId: 1 // Using actual user ID from database
         }
       });
 
@@ -116,7 +123,7 @@ router.post('/', async (req, res) => {
         priority: priority || 'MEDIUM',
         estimatedTime,
         aiGenerated,
-        userId: '1', // Using actual user ID from database
+        userId: 1, // Using actual user ID from database
         dueDate
       },
       include: {
@@ -154,7 +161,7 @@ router.put('/:id', async (req, res) => {
     const existingTask = await prisma.task.findFirst({
       where: {
         id: req.params.id,
-        userId: '1' // Using actual user ID from database
+        userId: 1 // Using actual user ID from database
       }
     });
 
@@ -167,7 +174,7 @@ router.put('/:id', async (req, res) => {
       const goal = await prisma.goal.findFirst({
         where: {
           id: goalId,
-          userId: '1' // Using actual user ID from database
+          userId: 1 // Using actual user ID from database
         }
       });
 
@@ -223,7 +230,7 @@ router.patch('/:id/complete', async (req, res) => {
     const task = await prisma.task.findFirst({
       where: {
         id: req.params.id,
-        userId: '1' // Using actual user ID from database
+        userId: 1 // Using actual user ID from database
       }
     });
 
@@ -261,7 +268,7 @@ router.delete('/:id', async (req, res) => {
     const existingTask = await prisma.task.findFirst({
       where: {
         id: req.params.id,
-        userId: '1' // Using actual user ID from database
+        userId: 1 // Using actual user ID from database
       }
     });
 
@@ -283,7 +290,7 @@ router.delete('/:id', async (req, res) => {
 // GET /api/tasks/stats - Get task statistics
 router.get('/stats', async (req, res) => {
   try {
-    const userId = '1'; // Using actual user ID from database
+    const userId = req.user.id; // Using actual user ID from database
     
     const [totalTasks, completedTasks] = await Promise.all([
       prisma.task.count({ where: { userId } }),
@@ -307,9 +314,15 @@ router.get('/stats', async (req, res) => {
 // GET /api/tasks/all - Get all tasks for the authenticated user (no pagination)
 router.get('/all', async (req, res) => {
   try {
+    // Debug: Count total tasks and completed tasks
+    const totalTasks = await prisma.task.count({ where: { userId: 1 } });
+    const completedTasks = await prisma.task.count({ where: { userId: 1, completed: true } });
+    
+    console.log(`Debug /all: User ${req.user.id} has ${totalTasks} total tasks, ${completedTasks} completed`);
+
     const tasks = await prisma.task.findMany({
       where: {
-        userId: req.user.id
+        userId: 1
       },
       include: {
         goal: {
@@ -326,6 +339,9 @@ router.get('/all', async (req, res) => {
         { createdAt: 'desc' }
       ]
     });
+
+    console.log(`Debug /all: Returning ${tasks.length} tasks, completed count: ${tasks.filter(t => t.completed).length}`);
+    
     res.json(tasks);
   } catch (error) {
     console.error('Error fetching all tasks:', error);
@@ -341,7 +357,7 @@ router.patch('/:id', async (req, res) => {
     const existingTask = await prisma.task.findFirst({
       where: {
         id: req.params.id,
-        userId: '1' // Using actual user ID from database
+        userId: 1 // Using actual user ID from database
       }
     });
 
