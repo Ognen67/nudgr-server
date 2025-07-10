@@ -30,7 +30,6 @@ router.get('/', async (req, res) => {
         }
       },
       orderBy: [
-        { completed: 'asc' },
         { priority: 'desc' },
         { createdAt: 'desc' }
       ]
