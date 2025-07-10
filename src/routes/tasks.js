@@ -15,7 +15,7 @@ router.get('/', async (req, res) => {
     const where = {
       userId: req.user.id, // Using actual user ID from database
       ...(goalId && { goalId }),
-      ...(completed !== undefined && { completed: completed === 'true' }),
+      ...(completed && { completed }),
       ...(priority && { priority })
     };
 
