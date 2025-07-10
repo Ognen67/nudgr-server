@@ -10,23 +10,16 @@ router.use(getUserFromAuth);
 // GET /api/tasks - Get all tasks for the authenticated user
 router.get('/', async (req, res) => {
   try {
-    const { goalId, completed, priority, limit = 50, offset = 0 } = req.query;
-    
-    const where = {
-      userId: 1, // Using actual user ID from database
-      ...(goalId && { goalId }),
-      ...(completed !== undefined && { completed: completed === 'true' }),
-      ...(priority && { priority })
-    };
-
     // Debug: Count total tasks and completed tasks
     const totalTasks = await prisma.task.count({ where: { userId: 1 } });
     const completedTasks = await prisma.task.count({ where: { userId: 1, completed: true } });
     
-    console.log(`Debug: User ${req.user.id} has ${totalTasks} total tasks, ${completedTasks} completed`);
+    console.log(`Debug /all: User ${req.user.id} has ${totalTasks} total tasks, ${completedTasks} completed`);
 
     const tasks = await prisma.task.findMany({
-      where,
+      where: {
+        userId: 1
+      },
       include: {
         goal: {
           select: {
@@ -40,17 +33,15 @@ router.get('/', async (req, res) => {
         { completed: 'asc' },
         { priority: 'desc' },
         { createdAt: 'desc' }
-      ],
-      take: parseInt(limit),
-      skip: parseInt(offset)
+      ]
     });
 
-    console.log(`Debug: Returning ${tasks.length} tasks, completed count: ${tasks.filter(t => t.completed).length}`);
-
+    console.log(`Debug /all: Returning ${tasks.length} tasks, completed count: ${tasks.filter(t => t.completed).length}`);
+    
     res.json(tasks);
   } catch (error) {
-    console.error('Error fetching tasks:', error);
-    res.status(500).json({ error: 'Failed to fetch tasks' });
+    console.error('Error fetching all tasks:', error);
+    res.status(500).json({ error: 'Failed to fetch all tasks' });
   }
 });
 
