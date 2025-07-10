@@ -303,6 +303,35 @@ router.get('/stats', async (req, res) => {
   }
 });
 
+// GET /api/tasks/all - Get all tasks for the authenticated user (no pagination)
+router.get('/all', async (req, res) => {
+  try {
+    const tasks = await prisma.task.findMany({
+      where: {
+        userId: req.user.id
+      },
+      include: {
+        goal: {
+          select: {
+            id: true,
+            title: true,
+            category: true
+          }
+        }
+      },
+      orderBy: [
+        { completed: 'asc' },
+        { priority: 'desc' },
+        { createdAt: 'desc' }
+      ]
+    });
+    res.json(tasks);
+  } catch (error) {
+    console.error('Error fetching all tasks:', error);
+    res.status(500).json({ error: 'Failed to fetch all tasks' });
+  }
+});
+
 // PATCH /api/tasks/:id - Partial update of a task
 router.patch('/:id', async (req, res) => {
   try {
