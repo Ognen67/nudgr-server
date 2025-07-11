@@ -1,17 +1,16 @@
 import express from 'express';
 import prisma from '../lib/prisma.js';
-import { getUserFromAuth } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Apply user middleware to all routes (TEMPORARILY DISABLED FOR TESTING)
-router.use(getUserFromAuth);
+// Note: Authentication middleware is applied at the server level
+// req.user is available from the authMiddleware
 
 // GET /api/goals - Get all goals for the authenticated user
 router.get('/', async (req, res) => {
   try {
     const goals = await prisma.goal.findMany({
-      where: { userId: req.user.id }, // Using actual user ID from database
+      where: { userId: req.user.id },
       include: {
         tasks: {
           orderBy: { createdAt: 'desc' }
@@ -38,7 +37,7 @@ router.get('/:id', async (req, res) => {
     const goal = await prisma.goal.findFirst({
       where: {
         id: req.params.id,
-        userId: '1' // Using actual user ID from database
+        userId: req.user.id
       },
       include: {
         tasks: {
@@ -74,7 +73,7 @@ router.post('/', async (req, res) => {
         deadline: deadline ? new Date(deadline) : null,
         priority: priority || 'MEDIUM',
         category,
-        userId: '1' // Using actual user ID from database
+        userId: req.user.id
       },
       include: {
         tasks: true,
@@ -144,7 +143,7 @@ router.delete('/:id', async (req, res) => {
     const existingGoal = await prisma.goal.findFirst({
       where: {
         id: req.params.id,
-        userId: '1' // Using actual user ID from database
+        userId: req.user.id
       }
     });
 

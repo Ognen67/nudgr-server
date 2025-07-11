@@ -1,9 +1,6 @@
 import express from 'express';
 import prisma from '../lib/prisma.js';
 import OpenAI from 'openai';
-import { getUserFromAuth } from '../middleware/auth.js';
-
-
 import 'dotenv/config'
 
 const router = express.Router();
@@ -12,13 +9,8 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-// (CLERK AUTH DISABLED FOR TESTING)
-// import { requireAuth } from '@clerk/express';
-// router.use(requireAuth);
-// ...re-enable Clerk middleware above when ready...
-
-// Apply user middleware to all routes
-router.use(getUserFromAuth);
+// Note: Authentication middleware is applied at the server level
+// req.user is available from the authMiddleware
 
 // POST /api/ai/suggest-tasks - Generate AI task suggestions for a goal
 router.post('/suggest-tasks', async (req, res) => {
