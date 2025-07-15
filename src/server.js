@@ -52,7 +52,7 @@ app.use(cors({
     // Allow your production domains
     const allowedOrigins = [
       process.env.FRONTEND_URL,
-      process.env.NEXTJS_URL,
+      process.env.NEXTJS_URL, 
       // Add your production domains here
       'https://nudgr-web.vercel.app',
     ].filter(Boolean);

@@ -20,23 +20,31 @@ let supabaseAdmin = null;
 let supabaseClient = null;
 
 if (hasValidSupabaseConfig()) {
-  // Supabase client for admin operations (uses service role key)
-  supabaseAdmin = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false
+  try {
+    // Supabase client for admin operations (uses service role key)
+    supabaseAdmin = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
       }
-    }
-  );
+    );
 
-  // Supabase client for client operations (uses anon key)
-  supabaseClient = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_ANON_KEY
-  );
+    // Supabase client for client operations (uses anon key)
+    supabaseClient = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_ANON_KEY
+    );
+    
+    console.log('✅ Supabase clients initialized successfully');
+  } catch (error) {
+    console.error('❌ Error initializing Supabase clients:', error);
+    supabaseAdmin = null;
+    supabaseClient = null;
+  }
 } else {
   console.warn('⚠️  Supabase configuration is missing or invalid. Please check your environment variables:');
   console.warn('   - SUPABASE_URL should be your project URL (https://your-project.supabase.co)');
@@ -46,5 +54,5 @@ if (hasValidSupabaseConfig()) {
   console.warn('   Authentication will not work until these are properly configured.');
 }
 
-export { supabaseAdmin, supabaseClient };
+export { supabaseAdmin, supabaseClient, hasValidSupabaseConfig };
 export default supabaseAdmin;

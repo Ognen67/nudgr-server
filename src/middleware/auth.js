@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import jwksClient from 'jwks-client';
-import { supabaseAdmin } from '../lib/supabase.js';
+import { supabaseAdmin, hasValidSupabaseConfig } from '../lib/supabase.js';
 import { ensureUserExists } from '../lib/userSync.js';
 
 // Check if we have valid JWKS configuration
@@ -45,10 +45,15 @@ const getSigningKey = (header, callback) => {
 export const authMiddleware = async (req, res, next) => {
   // Check if Supabase is properly configured
   if (!supabaseAdmin || !hasValidJWKSConfig()) {
-    console.warn('⚠️  Authentication middleware called but Supabase is not properly configured');
+    console.error('⚠️  Authentication middleware called but Supabase is not properly configured');
     return res.status(503).json({
       error: 'Authentication service unavailable',
-      message: 'Supabase authentication is not properly configured. Please check environment variables.'
+      message: 'Supabase authentication is not properly configured. Please check environment variables.',
+      details: {
+        supabaseAdmin: !!supabaseAdmin,
+        jwksConfig: hasValidJWKSConfig(),
+        supabaseConfig: hasValidSupabaseConfig()
+      }
     });
   }
 
