@@ -5,18 +5,20 @@ import { ensureUserExists } from '../lib/userSync.js';
 import dotenv from 'dotenv';
 // Load environment variables FIRST before any other imports
 dotenv.config();
-// Check if we have valid JWKS configuration
-const hasValidJWKSConfig = () => {
+
+// Check JWT configuration for both HS256 and RS256 tokens
+const hasValidJWTConfig = () => {
   const supabaseUrl = process.env.SUPABASE_URL;
+  const jwtSecret = process.env.SUPABASE_JWT_SECRET;
   const jwksUrl = process.env.SUPABASE_JWKS_URL;
   
-  console.log('🔍 JWKS Config Validation:');
+  console.log('🔍 JWT Config Validation:');
   console.log('  SUPABASE_URL:', supabaseUrl ? 'SET' : 'MISSING');
+  console.log('  SUPABASE_JWT_SECRET:', jwtSecret ? 'SET' : 'MISSING');
   console.log('  SUPABASE_JWKS_URL:', jwksUrl ? 'SET' : 'MISSING');
   
-  // We can build the JWKS URL from SUPABASE_URL if JWKS_URL is not provided
   if (!supabaseUrl) {
-    console.log('❌ SUPABASE_URL is missing - required for JWKS');
+    console.log('❌ SUPABASE_URL is missing - required for JWT validation');
     return false;
   }
   
@@ -25,14 +27,15 @@ const hasValidJWKSConfig = () => {
     return false;
   }
   
-  // Validate JWKS URL format if provided
-  if (jwksUrl) {
-    if (!jwksUrl.includes('.well-known/jwks.json')) {
-      console.log('⚠️ SUPABASE_JWKS_URL should use .well-known/jwks.json format per Supabase docs');
-    }
+  // We need either JWT secret (for HS256) or JWKS URL (for RS256)
+  if (!jwtSecret && !jwksUrl) {
+    console.log('❌ Neither SUPABASE_JWT_SECRET nor SUPABASE_JWKS_URL is set');
+    console.log('   For HS256 tokens: Set SUPABASE_JWT_SECRET');
+    console.log('   For RS256 tokens: Set SUPABASE_JWKS_URL');
+    return false;
   }
   
-  console.log('✅ JWKS config validation passed');
+  console.log('✅ JWT config validation passed');
   return true;
 };
 
@@ -103,11 +106,17 @@ const getSigningKey = async (header) => {
   return pem;
 };
 
-console.log('🚀 Initializing Custom JWKS Fetcher...');
-if (hasValidJWKSConfig()) {
-  console.log('✅ Custom JWKS fetcher initialized successfully');
+console.log('🚀 Initializing JWT Verification...');
+if (hasValidJWTConfig()) {
+  console.log('✅ JWT verification initialized successfully');
+  if (process.env.SUPABASE_JWT_SECRET) {
+    console.log('   - HS256 support: Enabled (using JWT secret)');
+  }
+  if (process.env.SUPABASE_JWKS_URL) {
+    console.log('   - RS256 support: Enabled (using JWKS)');
+  }
 } else {
-  console.log('❌ JWKS initialization skipped - invalid config');
+  console.log('❌ JWT initialization failed - invalid config');
 }
 
 // Main authentication middleware
@@ -116,13 +125,13 @@ export const authMiddleware = async (req, res, next) => {
   
   // Check if Supabase is properly configured
   console.log('  supabaseAdmin exists:', !!supabaseAdmin);
-  console.log('  hasValidJWKSConfig():', hasValidJWKSConfig());
+  console.log('  hasValidJWTConfig():', hasValidJWTConfig());
   console.log('  hasValidSupabaseConfig():', hasValidSupabaseConfig());
   
-  if (!supabaseAdmin || !hasValidJWKSConfig()) {
+  if (!supabaseAdmin || !hasValidJWTConfig()) {
     console.error('❌ Authentication middleware - Configuration check failed:');
     console.error('  - supabaseAdmin:', !!supabaseAdmin);
-    console.error('  - hasValidJWKSConfig:', hasValidJWKSConfig());
+    console.error('  - hasValidJWTConfig:', hasValidJWTConfig());
     console.error('  - hasValidSupabaseConfig:', hasValidSupabaseConfig());
     
     return res.status(503).json({
@@ -130,7 +139,7 @@ export const authMiddleware = async (req, res, next) => {
       message: 'Supabase authentication is not properly configured. Please check environment variables.',
       details: {
         supabaseAdmin: !!supabaseAdmin,
-        jwksConfig: hasValidJWKSConfig(),
+        jwtConfig: hasValidJWTConfig(),
         supabaseConfig: hasValidSupabaseConfig()
       }
     });
@@ -153,85 +162,89 @@ export const authMiddleware = async (req, res, next) => {
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
     console.log('✅ Auth Middleware - Token extracted, proceeding with verification...');
 
-    // Helper function to verify JWT with given options using our custom JWKS fetcher
-    const verifyJWT = async (options) => {
-      return new Promise(async (resolve, reject) => {
-        try {
-          // Decode the header to get the kid
-          const decoded = jwt.decode(token, { complete: true });
-          if (!decoded || !decoded.header) {
-            throw new Error('Invalid JWT format');
-          }
-          
-          // Get the signing key using our custom fetcher
-          const signingKey = await getSigningKey(decoded.header);
-          
-          // Verify the JWT with the signing key
-          jwt.verify(token, signingKey, options, (err, payload) => {
-            if (err) {
-              reject(err);
-            } else {
-              resolve(payload);
-            }
-          });
-        } catch (error) {
-          reject(error);
-        }
-      });
-    };
-
-    // Verify the JWT token using JWKS - Based on official Supabase documentation
+    // First, decode the token to check the algorithm
+    const decodedHeader = jwt.decode(token, { complete: true });
+    if (!decodedHeader || !decodedHeader.header) {
+      throw new Error('Invalid JWT format - unable to decode header');
+    }
+    
+    const algorithm = decodedHeader.header.alg;
+    console.log('🔍 Detected JWT algorithm:', algorithm);
+    
     let decoded;
     
-    console.log('🔍 Attempting JWT validation per Supabase docs...');
+    if (algorithm === 'HS256') {
+      // HS256 verification using JWT secret
+      console.log('🔍 Attempting HS256 JWT verification...');
+      
+      const jwtSecret = process.env.SUPABASE_JWT_SECRET;
+      if (!jwtSecret) {
+        throw new Error('SUPABASE_JWT_SECRET is required for HS256 token verification');
+      }
+      
+      try {
+        decoded = jwt.verify(token, jwtSecret, {
+          issuer: `${process.env.SUPABASE_URL}/auth/v1`,
+          algorithms: ['HS256'],
+          ignoreExpiration: false,
+          clockTolerance: 60, // Allow 60 seconds clock skew
+        });
+        
+        console.log('✅ HS256 JWT verification successful');
+        
+      } catch (jwtError) {
+        console.error('❌ HS256 JWT verification failed:', jwtError.message);
+        throw jwtError;
+      }
+      
+    } else if (algorithm === 'RS256') {
+      // RS256 verification using JWKS
+      console.log('🔍 Attempting RS256 JWT verification with JWKS...');
+      
+      try {
+        // Get the signing key using our custom fetcher
+        const signingKey = await getSigningKey(decodedHeader.header);
+        
+        decoded = jwt.verify(token, signingKey, {
+          issuer: `${process.env.SUPABASE_URL}/auth/v1`,
+          algorithms: ['RS256'],
+          ignoreExpiration: false,
+          clockTolerance: 60, // Allow 60 seconds clock skew
+        });
+        
+        console.log('✅ RS256 JWT verification successful');
+        
+      } catch (jwtError) {
+        console.error('❌ RS256 JWT verification failed:', jwtError.message);
+        throw jwtError;
+      }
+      
+    } else {
+      throw new Error(`Unsupported JWT algorithm: ${algorithm}. Only HS256 and RS256 are supported.`);
+    }
+
+    console.log('✅ Decoded token info:', { 
+      sub: decoded.sub, 
+      email: decoded.email, 
+      role: decoded.role,
+      iss: decoded.iss,
+      aud: decoded.aud || 'Not present',
+      exp: new Date(decoded.exp * 1000).toISOString(),
+      algorithm: algorithm
+    });
     
-    try {
-      // Supabase JWT verification based on official documentation
-      // Note: Supabase JWTs typically don't have an 'aud' claim according to their docs
-      decoded = await verifyJWT({
-        // Issuer format from Supabase docs: https://project-id.supabase.co/auth/v1
-        issuer: `${process.env.SUPABASE_URL}/auth/v1`,
-        algorithms: ['HS256'],
-        ignoreExpiration: false,
-        clockTolerance: 60, // Allow 60 seconds clock skew
-        // No audience validation - not shown in Supabase documentation examples
-      });
-      
-      console.log('✅ JWT verification successful');
-      console.log('✅ Decoded token info:', { 
-        sub: decoded.sub, 
-        email: decoded.email, 
-        role: decoded.role,
-        iss: decoded.iss,
-        aud: decoded.aud || 'Not present',
-        exp: new Date(decoded.exp * 1000).toISOString()
-      });
-      
-      // Validate that this is a proper Supabase user token
-      if (!decoded.sub) {
-        throw new Error('JWT missing subject (user ID)');
-      }
-      
-      if (!decoded.role) {
-        throw new Error('JWT missing role claim');
-      }
-      
-      // Ensure the role is appropriate for API access
-      if (decoded.role !== 'authenticated' && decoded.role !== 'anon') {
-        console.warn('⚠️ Unusual role in JWT:', decoded.role);
-      }
-      
-    } catch (jwtError) {
-      console.error('❌ JWT verification failed:', jwtError.message);
-      console.error('❌ JWT verification details:', {
-        name: jwtError.name,
-        message: jwtError.message,
-        expectedIssuer: `${process.env.SUPABASE_URL}/auth/v1`,
-        algorithm: 'HS256'
-      });
-      
-      // Don't try fallback validation - if Supabase JWT fails, it should fail
-      throw jwtError;
+    // Validate that this is a proper Supabase user token
+    if (!decoded.sub) {
+      throw new Error('JWT missing subject (user ID)');
+    }
+    
+    if (!decoded.role) {
+      throw new Error('JWT missing role claim');
+    }
+    
+    // Ensure the role is appropriate for API access
+    if (decoded.role !== 'authenticated' && decoded.role !== 'anon') {
+      console.warn('⚠️ Unusual role in JWT:', decoded.role);
     }
 
     // Extract user information from the decoded token
