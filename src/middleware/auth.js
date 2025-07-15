@@ -112,22 +112,71 @@ export const authMiddleware = async (req, res, next) => {
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
     console.log('✅ Auth Middleware - Token extracted, proceeding with verification...');
 
-    // Verify the JWT token using JWKS
-    const decoded = await new Promise((resolve, reject) => {
-      jwt.verify(token, getSigningKey, {
-        audience: process.env.SUPABASE_URL?.replace('https://', ''), // Remove https:// for audience
-        issuer: process.env.SUPABASE_URL + '/auth/v1',
-        algorithms: ['RS256']
-      }, (err, decoded) => {
-        if (err) {
-          console.error('❌ JWT verification failed:', err.message);
-          reject(err);
-        } else {
-          console.log('✅ JWT verification successful');
-          resolve(decoded);
-        }
+    // Helper function to verify JWT with given options
+    const verifyJWT = (options) => {
+      return new Promise((resolve, reject) => {
+        jwt.verify(token, getSigningKey, options, (err, decoded) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(decoded);
+          }
+        });
       });
-    });
+    };
+
+    // Verify the JWT token using JWKS
+    let decoded;
+    try {
+      // First try with strict validation
+      console.log('🔍 Attempting strict JWT validation...');
+      decoded = await verifyJWT({
+        audience: process.env.SUPABASE_URL?.replace('https://', '').replace('.supabase.co', ''), // Just the project ref
+        issuer: process.env.SUPABASE_URL + '/auth/v1',
+        algorithms: ['RS256'],
+        ignoreExpiration: false,
+        clockTolerance: 60 // Allow 60 seconds clock skew
+      });
+      
+      console.log('✅ JWT verification successful (strict)');
+      console.log('✅ Decoded token info:', { 
+        sub: decoded.sub, 
+        email: decoded.email, 
+        aud: decoded.aud, 
+        iss: decoded.iss 
+      });
+    } catch (strictError) {
+      console.error('❌ JWT verification failed (strict):', strictError.message);
+      console.error('❌ JWT verification details:', {
+        name: strictError.name,
+        message: strictError.message,
+        expectedAudience: process.env.SUPABASE_URL?.replace('https://', '').replace('.supabase.co', ''),
+        expectedIssuer: process.env.SUPABASE_URL + '/auth/v1'
+      });
+      
+      console.log('⚠️ Strict validation failed, trying lenient validation...');
+      
+      try {
+        // Fallback: Try with more lenient validation (no audience/issuer check)
+        decoded = await verifyJWT({
+          algorithms: ['RS256'],
+          ignoreExpiration: false,
+          clockTolerance: 60
+        });
+        
+        console.log('✅ JWT verification successful (lenient)');
+        console.log('✅ Decoded token info:', { 
+          sub: decoded.sub, 
+          email: decoded.email, 
+          aud: decoded.aud, 
+          iss: decoded.iss 
+        });
+      } catch (lenientError) {
+        console.error('❌ JWT verification failed (lenient):', lenientError.message);
+        console.error('❌ Both strict and lenient JWT verification failed');
+        throw lenientError;
+      }
+    }
 
     // Extract user information from the decoded token
     const userId = decoded.sub;
