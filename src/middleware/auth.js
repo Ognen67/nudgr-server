@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import jwksClient from 'jwks-client';
 import { supabaseAdmin } from '../lib/supabase.js';
+import { ensureUserExists } from '../lib/userSync.js';
 
 // Check if we have valid JWKS configuration
 const hasValidJWKSConfig = () => {
@@ -84,28 +85,40 @@ export const authMiddleware = async (req, res, next) => {
     const userEmail = decoded.email;
     const userRole = decoded.role;
 
-    // Attach user info to request object
-    req.user = {
-      id: userId,
-      email: userEmail,
-      role: userRole,
-      // Include other claims from the token
-      ...decoded
-    };
-
-    // Optional: Get additional user data from Supabase if needed
-    // You can uncomment this if you need more user data from the database
-    /*
-    try {
-      const { data: userData, error } = await supabaseAdmin.auth.admin.getUserById(userId);
-      if (userData && userData.user) {
-        req.user.metadata = userData.user.user_metadata;
-        req.user.appMetadata = userData.user.app_metadata;
-      }
-    } catch (userError) {
-      console.warn('Could not fetch additional user data:', userError);
+    // Get full user data from Supabase
+    const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
+    if (userError) {
+      console.error('Error fetching user from Supabase:', userError);
+      return res.status(401).json({ 
+        error: 'Authentication failed', 
+        message: 'Unable to verify user data.' 
+      });
     }
-    */
+
+    // Ensure user exists in our database and sync data
+    try {
+      const dbUser = await ensureUserExists(userData.user);
+      
+      // Attach comprehensive user info to request object
+      req.user = {
+        id: userId,
+        email: userEmail,
+        role: userRole,
+        name: dbUser.name,
+        dbUser: dbUser, // Full database user record
+        // Include other claims from the token
+        ...decoded
+      };
+    } catch (syncError) {
+      console.error('Error syncing user to database:', syncError);
+      // Continue without DB sync - authentication still valid
+      req.user = {
+        id: userId,
+        email: userEmail,
+        role: userRole,
+        ...decoded
+      };
+    }
 
     next();
   } catch (error) {

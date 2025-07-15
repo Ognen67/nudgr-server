@@ -100,7 +100,7 @@ router.put('/:id', async (req, res) => {
     const existingGoal = await prisma.goal.findFirst({
       where: {
         id: req.params.id,
-        userId: '1' // Using actual user ID from database
+        userId: req.user.id
       }
     });
 
