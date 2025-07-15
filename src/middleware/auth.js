@@ -7,22 +7,29 @@ import dotenv from 'dotenv';
 dotenv.config();
 // Check if we have valid JWKS configuration
 const hasValidJWKSConfig = () => {
+  const supabaseUrl = process.env.SUPABASE_URL;
   const jwksUrl = process.env.SUPABASE_JWKS_URL;
   
   console.log('🔍 JWKS Config Validation:');
+  console.log('  SUPABASE_URL:', supabaseUrl ? 'SET' : 'MISSING');
   console.log('  SUPABASE_JWKS_URL:', jwksUrl ? 'SET' : 'MISSING');
   
-  if (!jwksUrl) {
-    console.log('❌ SUPABASE_JWKS_URL is missing');
+  // We can build the JWKS URL from SUPABASE_URL if JWKS_URL is not provided
+  if (!supabaseUrl) {
+    console.log('❌ SUPABASE_URL is missing - required for JWKS');
     return false;
   }
-  if (jwksUrl === 'https://placeholder.supabase.co/rest/v1/auth/jwks') {
-    console.log('❌ SUPABASE_JWKS_URL is still placeholder');
+  
+  if (!supabaseUrl.includes('.supabase.co')) {
+    console.log('❌ SUPABASE_URL does not contain .supabase.co');
     return false;
   }
-  if (!jwksUrl.includes('.supabase.co')) {
-    console.log('❌ SUPABASE_JWKS_URL does not contain .supabase.co');
-    return false;
+  
+  // Validate JWKS URL format if provided
+  if (jwksUrl) {
+    if (!jwksUrl.includes('.well-known/jwks.json')) {
+      console.log('⚠️ SUPABASE_JWKS_URL should use .well-known/jwks.json format per Supabase docs');
+    }
   }
   
   console.log('✅ JWKS config validation passed');
@@ -36,8 +43,14 @@ console.log('🚀 Initializing JWKS...');
 if (hasValidJWKSConfig()) {
   try {
     console.log('🔧 Creating JWKS client...');
+    // Use the correct JWKS URL format from Supabase docs
+    // Format: https://project-id.supabase.co/auth/v1/.well-known/jwks.json
+    const jwksUrl = process.env.SUPABASE_JWKS_URL || 
+      `${process.env.SUPABASE_URL}/auth/v1/.well-known/jwks.json`;
+    
+    console.log('🔍 Using JWKS URL:', jwksUrl);
     jwks = jwksClient({
-      jwksUri: process.env.SUPABASE_JWKS_URL,
+      jwksUri: jwksUrl,
       cache: true,
       rateLimit: true,
       jwksRequestsPerMinute: 5,
@@ -125,57 +138,58 @@ export const authMiddleware = async (req, res, next) => {
       });
     };
 
-    // Verify the JWT token using JWKS
+    // Verify the JWT token using JWKS - Based on official Supabase documentation
     let decoded;
+    
+    console.log('🔍 Attempting JWT validation per Supabase docs...');
+    
     try {
-      // First try with strict validation
-      console.log('🔍 Attempting strict JWT validation...');
+      // Supabase JWT verification based on official documentation
+      // Note: Supabase JWTs typically don't have an 'aud' claim according to their docs
       decoded = await verifyJWT({
-        audience: process.env.SUPABASE_URL?.replace('https://', '').replace('.supabase.co', ''), // Just the project ref
-        issuer: process.env.SUPABASE_URL + '/auth/v1',
+        // Issuer format from Supabase docs: https://project-id.supabase.co/auth/v1
+        issuer: `${process.env.SUPABASE_URL}/auth/v1`,
         algorithms: ['RS256'],
         ignoreExpiration: false,
-        clockTolerance: 60 // Allow 60 seconds clock skew
+        clockTolerance: 60, // Allow 60 seconds clock skew
+        // No audience validation - not shown in Supabase documentation examples
       });
       
-      console.log('✅ JWT verification successful (strict)');
+      console.log('✅ JWT verification successful');
       console.log('✅ Decoded token info:', { 
         sub: decoded.sub, 
         email: decoded.email, 
-        aud: decoded.aud, 
-        iss: decoded.iss 
-      });
-    } catch (strictError) {
-      console.error('❌ JWT verification failed (strict):', strictError.message);
-      console.error('❌ JWT verification details:', {
-        name: strictError.name,
-        message: strictError.message,
-        expectedAudience: process.env.SUPABASE_URL?.replace('https://', '').replace('.supabase.co', ''),
-        expectedIssuer: process.env.SUPABASE_URL + '/auth/v1'
+        role: decoded.role,
+        iss: decoded.iss,
+        aud: decoded.aud || 'Not present',
+        exp: new Date(decoded.exp * 1000).toISOString()
       });
       
-      console.log('⚠️ Strict validation failed, trying lenient validation...');
-      
-      try {
-        // Fallback: Try with more lenient validation (no audience/issuer check)
-        decoded = await verifyJWT({
-          algorithms: ['RS256'],
-          ignoreExpiration: false,
-          clockTolerance: 60
-        });
-        
-        console.log('✅ JWT verification successful (lenient)');
-        console.log('✅ Decoded token info:', { 
-          sub: decoded.sub, 
-          email: decoded.email, 
-          aud: decoded.aud, 
-          iss: decoded.iss 
-        });
-      } catch (lenientError) {
-        console.error('❌ JWT verification failed (lenient):', lenientError.message);
-        console.error('❌ Both strict and lenient JWT verification failed');
-        throw lenientError;
+      // Validate that this is a proper Supabase user token
+      if (!decoded.sub) {
+        throw new Error('JWT missing subject (user ID)');
       }
+      
+      if (!decoded.role) {
+        throw new Error('JWT missing role claim');
+      }
+      
+      // Ensure the role is appropriate for API access
+      if (decoded.role !== 'authenticated' && decoded.role !== 'anon') {
+        console.warn('⚠️ Unusual role in JWT:', decoded.role);
+      }
+      
+    } catch (jwtError) {
+      console.error('❌ JWT verification failed:', jwtError.message);
+      console.error('❌ JWT verification details:', {
+        name: jwtError.name,
+        message: jwtError.message,
+        expectedIssuer: `${process.env.SUPABASE_URL}/auth/v1`,
+        algorithm: 'RS256'
+      });
+      
+      // Don't try fallback validation - if Supabase JWT fails, it should fail
+      throw jwtError;
     }
 
     // Extract user information from the decoded token
