@@ -191,7 +191,7 @@ export const authMiddleware = async (req, res, next) => {
       decoded = await verifyJWT({
         // Issuer format from Supabase docs: https://project-id.supabase.co/auth/v1
         issuer: `${process.env.SUPABASE_URL}/auth/v1`,
-        algorithms: ['RS256'],
+        algorithms: ['HS256'],
         ignoreExpiration: false,
         clockTolerance: 60, // Allow 60 seconds clock skew
         // No audience validation - not shown in Supabase documentation examples
@@ -227,7 +227,7 @@ export const authMiddleware = async (req, res, next) => {
         name: jwtError.name,
         message: jwtError.message,
         expectedIssuer: `${process.env.SUPABASE_URL}/auth/v1`,
-        algorithm: 'RS256'
+        algorithm: 'HS256'
       });
       
       // Don't try fallback validation - if Supabase JWT fails, it should fail
