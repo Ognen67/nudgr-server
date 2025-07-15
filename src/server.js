@@ -54,8 +54,7 @@ app.use(cors({
       process.env.FRONTEND_URL,
       process.env.NEXTJS_URL,
       // Add your production domains here
-      'https://your-app.vercel.app',
-      'https://your-app.netlify.app',
+      'https://nudgr-web.vercel.app',
     ].filter(Boolean);
     
     if (allowedOrigins.includes(origin)) {
