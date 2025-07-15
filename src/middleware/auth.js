@@ -36,51 +36,79 @@ const hasValidJWKSConfig = () => {
   return true;
 };
 
-// JWKS client for verifying JWT tokens (only if configuration is valid)
-let jwks = null;
+// Custom JWKS fetcher for Supabase (handles API key requirement)
+let jwksCache = null;
+let jwksCacheExpiry = 0;
 
-console.log('🚀 Initializing JWKS...');
-if (hasValidJWKSConfig()) {
-  try {
-    console.log('🔧 Creating JWKS client...');
-    // Use the correct JWKS URL format from Supabase docs
-    // Format: https://project-id.supabase.co/auth/v1/.well-known/jwks.json
-    const jwksUrl = process.env.SUPABASE_JWKS_URL || 
-      `${process.env.SUPABASE_URL}/auth/v1/.well-known/jwks.json`;
-    
-    console.log('🔍 Using JWKS URL:', jwksUrl);
-    jwks = jwksClient({
-      jwksUri: jwksUrl,
-      cache: true,
-      rateLimit: true,
-      jwksRequestsPerMinute: 5,
-      jwksRequestTimeoutMs: 5000,
-    });
-    console.log('✅ JWKS client initialized successfully');
-  } catch (error) {
-    console.error('❌ Error initializing JWKS client:', error);
-    jwks = null;
+const fetchSupabaseJWKS = async () => {
+  const now = Date.now();
+  
+  // Return cached JWKS if still valid (cache for 10 minutes as per Supabase docs)
+  if (jwksCache && jwksCacheExpiry > now) {
+    console.log('🔄 Using cached JWKS');
+    return jwksCache;
   }
+  
+  const jwksUrl = process.env.SUPABASE_JWKS_URL || 
+    `${process.env.SUPABASE_URL}/auth/v1/.well-known/jwks.json`;
+  
+  console.log('🔍 Fetching JWKS from:', jwksUrl);
+  
+  try {
+    const response = await fetch(jwksUrl, {
+      headers: {
+        'apikey': process.env.SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${process.env.SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    console.log('🔍 JWKS response status:', response.status);
+    
+    if (!response.ok) {
+      throw new Error(`JWKS fetch failed: ${response.status} ${response.statusText}`);
+    }
+    
+    const jwks = await response.json();
+    console.log('✅ JWKS fetched successfully, keys:', jwks.keys?.length || 0);
+    
+    // Cache for 10 minutes
+    jwksCache = jwks;
+    jwksCacheExpiry = now + (10 * 60 * 1000);
+    
+    return jwks;
+  } catch (error) {
+    console.error('❌ Failed to fetch JWKS:', error);
+    throw error;
+  }
+};
+
+// Function to get the signing key from our custom JWKS fetcher
+const getSigningKey = async (header) => {
+  const jwks = await fetchSupabaseJWKS();
+  
+  if (!jwks.keys || !Array.isArray(jwks.keys)) {
+    throw new Error('Invalid JWKS format');
+  }
+  
+  const key = jwks.keys.find(k => k.kid === header.kid);
+  if (!key) {
+    throw new Error(`Unable to find a signing key that matches '${header.kid}'`);
+  }
+  
+  // Convert JWK to PEM format for verification
+  const jwkToPem = await import('jwk-to-pem');
+  const pem = jwkToPem.default(key);
+  
+  return pem;
+};
+
+console.log('🚀 Initializing Custom JWKS Fetcher...');
+if (hasValidJWKSConfig()) {
+  console.log('✅ Custom JWKS fetcher initialized successfully');
 } else {
   console.log('❌ JWKS initialization skipped - invalid config');
 }
-
-// Function to get the signing key from JWKS
-const getSigningKey = (header, callback) => {
-  if (!jwks) {
-    callback(new Error('JWKS client not configured'));
-    return;
-  }
-  
-  jwks.getSigningKey(header.kid, (err, key) => {
-    if (err) {
-      callback(err);
-    } else {
-      const signingKey = key.publicKey || key.rsaPublicKey;
-      callback(null, signingKey);
-    }
-  });
-};
 
 // Main authentication middleware
 export const authMiddleware = async (req, res, next) => {
@@ -125,16 +153,30 @@ export const authMiddleware = async (req, res, next) => {
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
     console.log('✅ Auth Middleware - Token extracted, proceeding with verification...');
 
-    // Helper function to verify JWT with given options
-    const verifyJWT = (options) => {
-      return new Promise((resolve, reject) => {
-        jwt.verify(token, getSigningKey, options, (err, decoded) => {
-          if (err) {
-            reject(err);
-          } else {
-            resolve(decoded);
+    // Helper function to verify JWT with given options using our custom JWKS fetcher
+    const verifyJWT = async (options) => {
+      return new Promise(async (resolve, reject) => {
+        try {
+          // Decode the header to get the kid
+          const decoded = jwt.decode(token, { complete: true });
+          if (!decoded || !decoded.header) {
+            throw new Error('Invalid JWT format');
           }
-        });
+          
+          // Get the signing key using our custom fetcher
+          const signingKey = await getSigningKey(decoded.header);
+          
+          // Verify the JWT with the signing key
+          jwt.verify(token, signingKey, options, (err, payload) => {
+            if (err) {
+              reject(err);
+            } else {
+              resolve(payload);
+            }
+          });
+        } catch (error) {
+          reject(error);
+        }
       });
     };
 
