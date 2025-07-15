@@ -2,26 +2,54 @@ import jwt from 'jsonwebtoken';
 import jwksClient from 'jwks-client';
 import { supabaseAdmin, hasValidSupabaseConfig } from '../lib/supabase.js';
 import { ensureUserExists } from '../lib/userSync.js';
-
+import dotenv from 'dotenv';
+// Load environment variables FIRST before any other imports
+dotenv.config();
 // Check if we have valid JWKS configuration
 const hasValidJWKSConfig = () => {
   const jwksUrl = process.env.SUPABASE_JWKS_URL;
-  return jwksUrl && 
-         jwksUrl !== 'https://placeholder.supabase.co/rest/v1/auth/jwks' &&
-         jwksUrl.includes('.supabase.co');
+  
+  console.log('🔍 JWKS Config Validation:');
+  console.log('  SUPABASE_JWKS_URL:', jwksUrl ? 'SET' : 'MISSING');
+  
+  if (!jwksUrl) {
+    console.log('❌ SUPABASE_JWKS_URL is missing');
+    return false;
+  }
+  if (jwksUrl === 'https://placeholder.supabase.co/rest/v1/auth/jwks') {
+    console.log('❌ SUPABASE_JWKS_URL is still placeholder');
+    return false;
+  }
+  if (!jwksUrl.includes('.supabase.co')) {
+    console.log('❌ SUPABASE_JWKS_URL does not contain .supabase.co');
+    return false;
+  }
+  
+  console.log('✅ JWKS config validation passed');
+  return true;
 };
 
 // JWKS client for verifying JWT tokens (only if configuration is valid)
 let jwks = null;
 
+console.log('🚀 Initializing JWKS...');
 if (hasValidJWKSConfig()) {
-  jwks = jwksClient({
-    jwksUri: process.env.SUPABASE_JWKS_URL,
-    cache: true,
-    rateLimit: true,
-    jwksRequestsPerMinute: 5,
-    jwksRequestTimeoutMs: 5000,
-  });
+  try {
+    console.log('🔧 Creating JWKS client...');
+    jwks = jwksClient({
+      jwksUri: process.env.SUPABASE_JWKS_URL,
+      cache: true,
+      rateLimit: true,
+      jwksRequestsPerMinute: 5,
+      jwksRequestTimeoutMs: 5000,
+    });
+    console.log('✅ JWKS client initialized successfully');
+  } catch (error) {
+    console.error('❌ Error initializing JWKS client:', error);
+    jwks = null;
+  }
+} else {
+  console.log('❌ JWKS initialization skipped - invalid config');
 }
 
 // Function to get the signing key from JWKS
@@ -43,9 +71,19 @@ const getSigningKey = (header, callback) => {
 
 // Main authentication middleware
 export const authMiddleware = async (req, res, next) => {
+  console.log('🔍 Auth Middleware - Starting validation...');
+  
   // Check if Supabase is properly configured
+  console.log('  supabaseAdmin exists:', !!supabaseAdmin);
+  console.log('  hasValidJWKSConfig():', hasValidJWKSConfig());
+  console.log('  hasValidSupabaseConfig():', hasValidSupabaseConfig());
+  
   if (!supabaseAdmin || !hasValidJWKSConfig()) {
-    console.error('⚠️  Authentication middleware called but Supabase is not properly configured');
+    console.error('❌ Authentication middleware - Configuration check failed:');
+    console.error('  - supabaseAdmin:', !!supabaseAdmin);
+    console.error('  - hasValidJWKSConfig:', hasValidJWKSConfig());
+    console.error('  - hasValidSupabaseConfig:', hasValidSupabaseConfig());
+    
     return res.status(503).json({
       error: 'Authentication service unavailable',
       message: 'Supabase authentication is not properly configured. Please check environment variables.',
@@ -57,11 +95,14 @@ export const authMiddleware = async (req, res, next) => {
     });
   }
 
+  console.log('✅ Auth Middleware - Configuration validation passed');
+
   try {
     // Get token from Authorization header
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log('❌ Auth Middleware - No Bearer token provided');
       return res.status(401).json({ 
         error: 'Access denied', 
         message: 'No token provided. Please include Authorization: Bearer <token> header.' 
@@ -69,6 +110,7 @@ export const authMiddleware = async (req, res, next) => {
     }
 
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+    console.log('✅ Auth Middleware - Token extracted, proceeding with verification...');
 
     // Verify the JWT token using JWKS
     const decoded = await new Promise((resolve, reject) => {
@@ -78,8 +120,10 @@ export const authMiddleware = async (req, res, next) => {
         algorithms: ['RS256']
       }, (err, decoded) => {
         if (err) {
+          console.error('❌ JWT verification failed:', err.message);
           reject(err);
         } else {
+          console.log('✅ JWT verification successful');
           resolve(decoded);
         }
       });
@@ -90,19 +134,24 @@ export const authMiddleware = async (req, res, next) => {
     const userEmail = decoded.email;
     const userRole = decoded.role;
 
+    console.log('🔍 User info from token:', { userId, userEmail, userRole });
+
     // Get full user data from Supabase
     const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
     if (userError) {
-      console.error('Error fetching user from Supabase:', userError);
+      console.error('❌ Error fetching user from Supabase:', userError);
       return res.status(401).json({ 
         error: 'Authentication failed', 
         message: 'Unable to verify user data.' 
       });
     }
 
+    console.log('✅ User data fetched from Supabase successfully');
+
     // Ensure user exists in our database and sync data
     try {
       const dbUser = await ensureUserExists(userData.user);
+      console.log('✅ User synced to database successfully');
       
       // Attach comprehensive user info to request object
       req.user = {
@@ -115,7 +164,7 @@ export const authMiddleware = async (req, res, next) => {
         ...decoded
       };
     } catch (syncError) {
-      console.error('Error syncing user to database:', syncError);
+      console.error('⚠️ Error syncing user to database:', syncError);
       // Continue without DB sync - authentication still valid
       req.user = {
         id: userId,
@@ -125,9 +174,10 @@ export const authMiddleware = async (req, res, next) => {
       };
     }
 
+    console.log('✅ Auth Middleware - Authentication complete, proceeding to route');
     next();
   } catch (error) {
-    console.error('Auth middleware error:', error);
+    console.error('❌ Auth middleware error:', error);
     
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({ 
