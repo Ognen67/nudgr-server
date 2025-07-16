@@ -570,6 +570,12 @@ Make sure:
 router.post('/transform-thought-to-goal', async (req, res) => {
   console.log('POST /api/ai/transform-thought-to-goal - Request received:', req.body);
   try {
+    // Check if user is authenticated (should be set by authMiddleware)
+    if (!req.user || !req.user.id) {
+      console.log('User not authenticated or missing user ID');
+      return res.status(401).json({ error: 'Authentication required. Please log in to continue.' });
+    }
+
     const { thought } = req.body;
     if (!thought || typeof thought !== 'string') {
       console.log('Invalid thought provided');
