@@ -582,6 +582,10 @@ router.post('/transform-thought-to-goal', async (req, res) => {
       return res.status(400).json({ error: 'Thought is required.' });
     }
 
+    // Clean and validate the thought
+    thought = thought.trim();
+    console.log('Processing thought:', thought);
+
     const prompt = `
 Transform this thought into a goal with related tasks: "${thought}"
 
@@ -640,17 +644,82 @@ Make sure:
         cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
       }
       
-      aiData = JSON.parse(cleanResponse);
-      if (!aiData.goal || !Array.isArray(aiData.tasks)) {
-        throw new Error('Response missing goal or tasks array');
+      // Try to find JSON object in the response if it's mixed with other text
+      const jsonMatch = cleanResponse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        cleanResponse = jsonMatch[0];
       }
-      console.log('Successfully parsed AI response:', aiData);
+      
+      aiData = JSON.parse(cleanResponse);
+      console.log('Parsed AI data:', aiData);
+      
+      // Validate and fix the structure if needed
+      if (!aiData.goal || typeof aiData.goal !== 'object') {
+        console.log('Missing or invalid goal, creating fallback');
+        aiData.goal = {
+          title: thought.substring(0, 100),
+          description: `Transform this thought: "${thought}"`,
+          priority: 'MEDIUM',
+          category: 'other'
+        };
+      }
+      
+      if (!Array.isArray(aiData.tasks)) {
+        console.log('Missing or invalid tasks array, creating fallback');
+        aiData.tasks = [
+          {
+            title: `Work on: ${thought.substring(0, 80)}`,
+            description: `Take action on this thought: "${thought}"`,
+            priority: 'MEDIUM',
+            estimatedTime: 60
+          }
+        ];
+      }
+      
+      // Ensure goal has required fields
+      aiData.goal.title = aiData.goal.title || thought.substring(0, 100);
+      aiData.goal.description = aiData.goal.description || `Goal: ${thought}`;
+      aiData.goal.priority = ['HIGH', 'MEDIUM', 'LOW'].includes(aiData.goal.priority) ? aiData.goal.priority : 'MEDIUM';
+      aiData.goal.category = aiData.goal.category || 'other';
+      
+      // Ensure tasks have required fields
+      aiData.tasks = aiData.tasks.map((task, index) => ({
+        title: task.title || `Task ${index + 1}`,
+        description: task.description || `Work on: ${thought}`,
+        priority: ['HIGH', 'MEDIUM', 'LOW'].includes(task.priority) ? task.priority : 'MEDIUM',
+        estimatedTime: typeof task.estimatedTime === 'number' ? task.estimatedTime : 60
+      }));
+      
+      console.log('Successfully processed AI response:', aiData);
     } catch (parseError) {
       console.error('Error parsing AI response:', parseError);
-      return res.status(500).json({ 
-        error: 'Failed to parse AI suggestions',
-        rawResponse: aiResponse 
-      });
+      console.log('Creating fallback response for thought:', thought);
+      
+      // Create a fallback response if AI parsing fails
+      aiData = {
+        goal: {
+          title: thought.substring(0, 100),
+          description: `Transform this thought into action: "${thought}"`,
+          priority: 'MEDIUM',
+          category: 'other'
+        },
+        tasks: [
+          {
+            title: `Act on: ${thought.substring(0, 80)}`,
+            description: `Take specific action on this thought: "${thought}"`,
+            priority: 'MEDIUM',
+            estimatedTime: 60
+          },
+          {
+            title: 'Plan next steps',
+            description: `Break down "${thought}" into smaller actionable items`,
+            priority: 'MEDIUM',
+            estimatedTime: 30
+          }
+        ]
+      };
+      
+      console.log('Using fallback AI data:', aiData);
     }
 
     const userId = req.user.id; // Using actual user ID from database
