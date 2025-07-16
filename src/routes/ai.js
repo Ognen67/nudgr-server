@@ -576,7 +576,7 @@ router.post('/transform-thought-to-goal', async (req, res) => {
       return res.status(401).json({ error: 'Authentication required. Please log in to continue.' });
     }
 
-    const { thought } = req.body;
+    let { thought } = req.body;
     if (!thought || typeof thought !== 'string') {
       console.log('Invalid thought provided');
       return res.status(400).json({ error: 'Thought is required.' });
@@ -775,8 +775,48 @@ Make sure:
       message: `Successfully created goal "${createdGoal.title}" with ${createdTasks.length} tasks!`
     });
   } catch (err) {
-    console.error('OpenAI error:', err);
-    return res.status(500).json({ error: 'Failed to process thought into goal.' });
+    console.error('❌ Error in transform-thought-to-goal:', err);
+    console.error('❌ Error details:', {
+      name: err.name,
+      message: err.message,
+      stack: err.stack,
+      code: err.code
+    });
+    
+    // Provide more specific error messages
+    if (err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED') {
+      return res.status(500).json({ 
+        error: 'Network connection error. Please check your internet connection.',
+        details: 'Unable to connect to OpenAI API'
+      });
+    }
+    
+    if (err.status === 401) {
+      return res.status(500).json({ 
+        error: 'OpenAI API authentication failed. Please check API key.',
+        details: err.message
+      });
+    }
+    
+    if (err.status === 429) {
+      return res.status(500).json({ 
+        error: 'OpenAI API rate limit exceeded. Please try again later.',
+        details: err.message
+      });
+    }
+    
+    if (err.status === 400) {
+      return res.status(500).json({ 
+        error: 'Invalid request to OpenAI API.',
+        details: err.message
+      });
+    }
+    
+    return res.status(500).json({ 
+      error: 'Failed to process thought into goal.',
+      details: err.message,
+      type: err.name || 'Unknown error'
+    });
   }
 });
 
